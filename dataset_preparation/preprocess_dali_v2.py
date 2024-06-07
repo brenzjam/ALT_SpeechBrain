@@ -1,13 +1,56 @@
 from utils import *
-from download_dali_v2 import download_audio_for_dali_v2
+# from download_dali_v2 import download_audio_for_dali_v2
+import sys
+import pdb
+import warnings
+import librosa
+import torch
+import soundfile as sf
+import numpy as np
+# sys.path.insert(0, '/home/brendanoconnor/Desktop/jammable/my_utils')
+# from my_audio.utils import audio_io
 from demucs.separate import *
+from demucs.pretrained import *
+from demucs.apply import *
 from normalize_text import normalize_utterance_annotation
+
+
+def audio_io(file_path, trg_sr=None):
+    with warnings.catch_warnings(): # warning 
+        warnings.simplefilter("ignore", category=UserWarning)
+    file_path = str(file_path)
+    if file_path.endswith('.m4a'):
+        
+        if trg_sr == None:
+            y, samplerate = librosa.load(file_path, sr=None)
+        else:
+            y, _ = librosa.load(file_path, sr=trg_sr)
+
+    else:
+        y, samplerate = sf.read(file_path)
+        if trg_sr != None:
+            
+            if samplerate != trg_sr:
+                
+                if y.ndim == 2:
+                    y = librosa.to_mono(y.transpose(1,0))
+                
+                if not y.flags['F_CONTIGUOUS']:
+                    y = librosa.resample(np.asfortranarray(y), orig_sr=samplerate, target_sr=trg_sr)
+                else:
+                    y = librosa.resample(y, orig_sr=samplerate, target_sr=trg_sr)
+                    
+    if trg_sr == None:
+        return y, samplerate
+    else:
+        return y
+
 
 def main():
     procedure_v2()
 
 # Change the variable to path to official dali annotation path
-dali_data_path = '/data1/guxm/asr_datasets/DALI/v2/annotations/annot_tismir' # only used by function extract_utter_annotation_all_audio
+# dali_data_path = '/data1/guxm/asr_datasets/DALI/v2/annotations/annot_tismir' # only used by function extract_utter_annotation_all_audio
 necessary_meta_fp = './misc/dali_v2_utter_annotation_full.json'
 clean_meta_fp = './raw/dali/metas/utter_annotation_downloaded_english.json'
 dataset_download_dir = './downloads/dali_v2/'
@@ -30,7 +73,7 @@ def procedure_v2():
     '''
 
     # extract_utter_annotation_all_audio(dali_data_path)  # We have make the output ready, at './misc/dali_v2_utter_annotation_full.json'
-    download_audio_for_dali_v2(meta_fp=necessary_meta_fp)     # Download audios for the dataset
+    # download_audio_for_dali_v2(meta_fp=necessary_meta_fp)     # Download audios for the dataset
     source_separate_for_dali()                          # Get the vocal part
     update_utter_annotation()                           # Delete un-downloaded entries from metadata
     validate_annotation()                               # Ensure all utterance annotations are legal
@@ -150,11 +193,11 @@ def demucs_ss(src_root, tgt_root, args):
             print(f"Separating track {inp_audio_fp}")
             if not os.path.isfile(inp_audio_fp):
                 raise Exception(f'Input audio path {inp_audio_fp} not valid')
-
-            wav = load_track(inp_audio_fp, model.audio_channels, model.samplerate)
-
+            wav = audio_io(inp_audio_fp, trg_sr=model.samplerate)
             ref = wav.mean(0)
             wav = (wav - ref.mean()) / ref.std()
+            if wav.ndim == 1: # mono, but no batch dim
+                wav = torch.from_numpy(wav[np.newaxis, :]).to("cuda:0")
             sources = apply_model(model, wav[None], device=args.device, shifts=args.shifts,
                                   split=args.split, overlap=args.overlap, progress=True,
                                   num_workers=args.jobs)[0]

@@ -7,15 +7,31 @@ Authors
 import re
 import os
 import csv
-import random
+import pdb
 import json
 import argparse
 from collections import Counter
 import logging
+import torch
 import torchaudio
+import torchaudio.functional as F
 from tqdm import tqdm
-logger = logging.getLogger(__name__)
 SAMPLERATE = 16000
+
+
+# Create and configure logger
+logging.basicConfig(
+    level=logging.DEBUG, 
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    handlers=[
+        logging.FileHandler('dali_prepare.log'),
+        logging.StreamHandler()
+    ]
+)
+
+# Create logger
+logger = logging.getLogger(__name__)
 
 
 def prepare_audio_train_valid(
@@ -43,6 +59,28 @@ def prepare_audio_train_valid(
     with open(anno_path, 'r') as f:
         data = json.load(f)
     f.close()
+    
+    # # collect missing keys
+    # check_key_matches = False
+    # if check_key_matches:
+    #     missing_keys = []
+    #     keys_from_dir = [os.path.splitext(fn)[0] for fn in os.listdir(resample_folder)]
+    #     for k in tqdm(data.keys()):
+    #         if k not in keys_from_dir:
+    #             # logging.info(f"Key {k} not found in the directory")
+    #             missing_keys.append(k)
+    #     missing_percent = len(missing_keys)/len(keys_from_dir)
+
+    #     # remove missing keys
+    #     answer = input(
+    #         f"""Some entires in the metadata file are missing,
+    #         accounting for {missing_percent}% of what\'s in the audio directory.
+    #         Do you want to remove these from the file? (y/n)"""
+    #     )
+    #     if answer.lower() == 'y':
+    #         for k in missing_keys:
+    #             del data[k]
+    #     with open(os.path.join(root, 'metadata.json'), 'w') as f: json.dump(data, f)   
 
     csv_lines_train = [["ID", "duration", "wav", "wrd"]]
     csv_lines_valid = [["ID", "duration", "wav", "wrd"]]
@@ -64,12 +102,17 @@ def prepare_audio_train_valid(
         wrds = ' '.join(wrds)
 
         # load audio
-        signal, fs = torchaudio.load(resample_path)
+        try:
+            signal, fs = torchaudio.load(resample_path)
+        except RuntimeError as e:
+            logger.debug(f'path {resample_path} caused error: {e}')
+            pdb.set_trace()
         if signal.shape[1] == 0:
             with open(debug_file, "w") as f:
                 f.write(resample_path)
             continue
-        assert fs == SAMPLERATE
+        if fs != SAMPLERATE:
+            signal = F.resample(signal, orig_freq=fs, new_freq=SAMPLERATE)
         duration = signal.shape[1] / SAMPLERATE
 
         if duration < threshold:
@@ -138,7 +181,8 @@ def prepare_audio_test(
 
         # load audio
         signal, fs = torchaudio.load(path)
-        assert fs == SAMPLERATE
+        if fs != SAMPLERATE:
+            signal = F.resample(signal, orig_freq=fs, new_freq=SAMPLERATE)
         duration = signal.shape[1] / SAMPLERATE
 
         if duration < threshold:
@@ -165,10 +209,25 @@ def prepare_audio_test(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--train_folder", type=str, default="/path/to/dali_v2", help="The saved path for DALI training data folder")
-    parser.add_argument("--test_folder", type=str, default="/path/to/dali_v2", help="The saved path for DALI test data folder")
-    parser.add_argument("--save_folder", type=str, default="data", help="The saved path for prepared csv files")
+    parser.add_argument(
+        "--train_folder",
+        type=str,
+        default="/home/brendanoconnor/Documents/datasets/lyrics/singing/DALI/audio/DALI_train_val_segmented",
+        help="The saved path for DALI training data folder"
+    )
+    parser.add_argument(
+        "--test_folder",
+        type=str,
+        default="/home/brendanoconnor/Documents/datasets/lyrics/singing/DALI/audio/DALI_test_segmented",
+        help="The saved path for DALI test data folder"
+    )
+    parser.add_argument(
+        "--save_folder",
+        type=str,
+        default="/home/brendanoconnor/Documents/datasets/lyrics/singing/DALI/csv_data",
+        help="The saved path for prepared csv files"
+    )
     args = parser.parse_args()
     prepare_audio_train_valid(root=args.train_folder, save_folder=args.save_folder)
-    prepare_audio_test(root=args.test_folder, save_folder=args.save_folder)
+    # prepare_audio_test(root=args.test_folder, save_folder=args.save_folder)
     
