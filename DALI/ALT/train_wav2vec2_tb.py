@@ -36,7 +36,7 @@ class ASR(sb.Brain):
         self.writer = SummaryWriter(self.hparams.tensorboard_loc)
         self.step_cnt = 1
 
-    def compute_forward(self, batch, stage, not_use_lm=False):
+    def compute_forward(self, batch, stage, use_lm=False):
         """Forward computations from the waveform batches to the output probabilities."""
         batch = batch.to(self.device)
         wavs, wav_lens = batch.sig
@@ -55,6 +55,7 @@ class ASR(sb.Brain):
                 wavs = self.hparams.augmentation(wavs, wav_lens)
 
         # Forward pass
+        import pdb; pdb.set_trace()
         feats = self.modules.wav2vec2(wavs)
         x = self.modules.enc(feats)
 
@@ -71,7 +72,7 @@ class ASR(sb.Brain):
 
         # Compute outputs
         if stage == sb.Stage.VALID:
-            if not_use_lm == True:
+            if use_lm == True:
                 hyps = sb.decoders.ctc_greedy_decode(
                     p_ctc, wav_lens, blank_id=self.hparams.blank_index
                 )
@@ -279,7 +280,7 @@ class ASR(sb.Brain):
                                 valid_set, dynamic_ncols=True, disable=not enable
                             ):
                                 valid_step += 1
-                                loss, loss_ctc, loss_seq = self.evaluate_batch(batch, stage=Stage.VALID, not_use_lm=True)
+                                loss, loss_ctc, loss_seq = self.evaluate_batch(batch, stage=Stage.VALID, use_lm=self.hparams.use_lm_in_valid)
                                 avg_valid_loss -= avg_valid_loss / valid_step
                                 avg_valid_loss += float(loss) / valid_step
                                 avg_valid_loss_ctc -= avg_valid_loss_ctc / valid_step
@@ -310,7 +311,7 @@ class ASR(sb.Brain):
                         valid_set, dynamic_ncols=True, disable=not enable
                     ):
                         self.step += 1
-                        loss, loss_ctc, loss_seq = self.evaluate_batch(batch, stage=Stage.VALID)
+                        loss, loss_ctc, loss_seq = self.evaluate_batch(batch, stage=Stage.VALID, use_lm=self.hparams.use_lm_in_valid)
                         avg_valid_loss = self.update_average(
                             loss, avg_valid_loss
                         )
@@ -341,7 +342,7 @@ class ASR(sb.Brain):
         if self.auto_mix_prec:
             raise NotImplementedError()
             with torch.cuda.amp.autocast():
-                predictions = self.compute_forward(batch, sb.Stage.TRAIN)
+                predictions = self.compute_forward(batch, sb.Stage.TRAIN, use_lm=use_lm_in_train)
                 loss, loss_ctc, loss_seq = self.compute_objectives(predictions, batch, sb.Stage.TRAIN)
             
             self.scaler.scale(loss / self.hparams.accu_steps).backward()
@@ -472,7 +473,7 @@ class ASR(sb.Brain):
                 test_set, dynamic_ncols=True, disable=not progressbar
             ):
                 self.step += 1
-                loss, _, _ = self.evaluate_batch(batch, stage=Stage.TEST)
+                loss, _, _ = self.evaluate_batch(batch, stage=Stage.TEST, use_lm=self.hparams.use_lm_in_valid)
                 avg_test_loss = self.update_average(loss, avg_test_loss)
                 
                 # Debug mode only runs a few batches
@@ -486,9 +487,9 @@ class ASR(sb.Brain):
         self.step = 0
         return avg_test_loss
 
-    def evaluate_batch(self, batch, stage, not_use_lm=False):
+    def evaluate_batch(self, batch, stage, use_lm=False):
         """Computations needed for validation/test batches"""
-        predictions = self.compute_forward(batch, stage=stage, not_use_lm=not_use_lm)
+        predictions = self.compute_forward(batch, stage=stage, use_lm=use_lm)
         loss, loss_ctc, loss_seq = self.compute_objectives(predictions, batch, stage=stage)
         return loss.detach(), loss_ctc.detach(), loss_seq.detach()
     
@@ -638,10 +639,11 @@ def dataio_prepare(hparams):
     It also defines the data processing pipeline through user-defined functions."""
     data_folder = hparams["data_folder"]
 
+    
     train_data = sb.dataio.dataset.DynamicItemDataset.from_csv(
         csv_path=hparams["train_csv"], replacements={"data_root": data_folder},
     )
-
+    logger.info('train DID complete')
     if hparams["sorting"] == "ascending":
         # we sort training data to speed up training and get better results.
         train_data = train_data.filtered_sorted(sort_key="duration")
@@ -666,6 +668,8 @@ def dataio_prepare(hparams):
     valid_data = sb.dataio.dataset.DynamicItemDataset.from_csv(
         csv_path=hparams["valid_csv"], replacements={"data_root": data_folder},
     )
+    logger.info('valid DID complete')
+
     valid_data = valid_data.filtered_sorted(sort_key="duration")
 
     # test is separate
@@ -675,6 +679,8 @@ def dataio_prepare(hparams):
         test_datasets[name] = sb.dataio.dataset.DynamicItemDataset.from_csv(
             csv_path=csv_file, replacements={"data_root": data_folder}
         )
+        logger.info('test DID complete')
+
         test_datasets[name] = test_datasets[name].filtered_sorted(
             sort_key="duration"
         )
@@ -763,8 +769,8 @@ if __name__ == "__main__":
         hparams
     )
 
-    run_on_main(hparams["pretrainer"].collect_files)
-    hparams["pretrainer"].load_collected(device=run_opts["device"])
+    # run_on_main(hparams["pretrainer"].collect_files)
+    # hparams["pretrainer"].load_collected(device=run_opts["device"])
 
     # Trainer initialization
     asr_brain = ASR(
