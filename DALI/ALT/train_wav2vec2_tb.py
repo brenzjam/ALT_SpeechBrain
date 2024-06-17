@@ -14,6 +14,7 @@ Authors
 
 import os
 import sys
+import pdb
 import torch
 import logging
 import speechbrain as sb
@@ -22,6 +23,7 @@ from hyperpyyaml import load_hyperpyyaml
 from pathlib import Path
 import torchaudio
 from collections import OrderedDict
+import pynvml
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +57,6 @@ class ASR(sb.Brain):
                 wavs = self.hparams.augmentation(wavs, wav_lens)
 
         # Forward pass
-        import pdb; pdb.set_trace()
         feats = self.modules.wav2vec2(wavs)
         x = self.modules.enc(feats)
 
@@ -643,7 +644,6 @@ def dataio_prepare(hparams):
     train_data = sb.dataio.dataset.DynamicItemDataset.from_csv(
         csv_path=hparams["train_csv"], replacements={"data_root": data_folder},
     )
-    logger.info('train DID complete')
     if hparams["sorting"] == "ascending":
         # we sort training data to speed up training and get better results.
         train_data = train_data.filtered_sorted(sort_key="duration")
@@ -668,7 +668,6 @@ def dataio_prepare(hparams):
     valid_data = sb.dataio.dataset.DynamicItemDataset.from_csv(
         csv_path=hparams["valid_csv"], replacements={"data_root": data_folder},
     )
-    logger.info('valid DID complete')
 
     valid_data = valid_data.filtered_sorted(sort_key="duration")
 
@@ -679,7 +678,6 @@ def dataio_prepare(hparams):
         test_datasets[name] = sb.dataio.dataset.DynamicItemDataset.from_csv(
             csv_path=csv_file, replacements={"data_root": data_folder}
         )
-        logger.info('test DID complete')
 
         test_datasets[name] = test_datasets[name].filtered_sorted(
             sort_key="duration"
@@ -745,6 +743,13 @@ def dataio_prepare(hparams):
     return train_data, valid_data, test_datasets, label_encoder
 
 
+def print_gpu_memory():
+    pynvml.nvmlInit()
+    handle = pynvml.nvmlDeviceGetHandleByIndex(0)  # GPU 0
+    mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+    print(f"Used memory: {mem_info.used / 1024 ** 2} MB")
+
+
 if __name__ == "__main__":
 
     # CLI:
@@ -784,6 +789,7 @@ if __name__ == "__main__":
     # NB: This tokenizer corresponds to the one used for the LM!!
     asr_brain.tokenizer = label_encoder
 
+    print_gpu_memory()
     # Training
     asr_brain.fit(
         asr_brain.hparams.epoch_counter,
@@ -793,6 +799,7 @@ if __name__ == "__main__":
         valid_loader_kwargs=hparams["valid_dataloader_opts"],
     )
 
+    print_gpu_memory()
     # Testing
     for k in test_datasets.keys():  # keys are test_clean, test_other etc
         asr_brain.hparams.wer_file = os.path.join(
