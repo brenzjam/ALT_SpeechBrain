@@ -10,6 +10,10 @@ pip install sklearn
 pip install setuptools==59.5.0
 pip install tensorboard
 
+# To get this repository to work with other HF models like wav2vec2-base-960h, do the following:
+
+pip install transformers==4.29.2 and safetensors==0.3.0
+
 # Download RNNLM_mix from ALT's README.md respository link
 # Add the path for this to DALI/ALT and replace the !PLACEHOLDER value for the attribute 'pretrained_lm_path' in hparams/train_wav2vec2_tb.yaml.
 
