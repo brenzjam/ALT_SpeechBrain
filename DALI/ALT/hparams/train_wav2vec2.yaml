@@ -2,18 +2,27 @@
 seed: 1234
 __set_seed: !apply:torch.manual_seed [!ref <seed>]
 attempt: 1
-output_folder: !ref results/train_wav2vec2_attempt<attempt>/<seed>
-csv_folder: /home/brendanoconnor/Documents/datasets/lyrics/singing/DALI/csv_data
+dataset_version: ""
+hf_supplier: facebook
+model_name: hubert-base-ls960
+# model_name: wav2vec2-base-960h
+# model_name: wav2vec2-large-960h-lv60-self
+dnn_neurons: 768
+
+output_folder: !ref results/train_<model_name>_<dataset_version>-dali_attempt<attempt>/<seed>
+csv_folder: /home/brendanoconnor/Documents/datasets/lyrics/singing/DALI/csv_data<dataset_version>
 wer_file: !ref <output_folder>/wer.txt
 save_folder: !ref <output_folder>/save
 train_log: !ref <output_folder>/train_log.txt
 tensorboard_loc: !ref <output_folder>/tensorboard
 
 # URL for the biggest Fairseq english wav2vec2 model.
-wav2vec2_hub: facebook/wav2vec2-large-960h-lv60-self
+# wav2vec2_hub: facebook/wav2vec2-large-960h-lv60-self
+# wav2vec2_hub: facebook/hubert-base-ls960
+wav2vec2_hub: <hf_supplier>/<model_name>
 pretrain: False
-pretrain_folder: ../../DSing/save_model
-save_model: False
+pretrain_folder: ../save_model
+save_model: True
 save_model_folder: ../save_model
 save_feat_folder: ../feats
 label_encoder: ../label_encoder.txt
@@ -34,9 +43,9 @@ test_csv:
 
 valid_interval: 5000
 # Decode method
-use_lm_in_train: False
-use_lm_in_valid: False
-use_lm_in_test: False
+use_lm_in_train: True
+use_lm_in_valid: True
+use_lm_in_test: True
 
 # Training parameters
 number_of_epochs: 4
@@ -68,7 +77,7 @@ test_dataloader_opts:
 # Model parameters
 activation: !name:torch.nn.LeakyReLU
 dnn_layers: 1
-dnn_neurons: 1024
+
 emb_size: 128
 dec_neurons: 256
 freeze_wav2vec: False
@@ -96,7 +105,7 @@ augmentation: !new:speechbrain.lobes.augment.TimeDomainSpecAugment
    speeds: [95, 100, 105]
 
 enc: !new:speechbrain.lobes.models.VanillaNN.VanillaNN
-   input_shape: [null, null, 1024]
+   input_shape: [null, null, !ref <dnn_neurons>]
    activation: !ref <activation>
    dnn_blocks: !ref <dnn_layers>
    dnn_neurons: !ref <dnn_neurons>
@@ -163,58 +172,58 @@ lm_rnn_neurons: 2048
 lm_dnn_blocks: 2
 lm_dnn_neurons: 1024
 
-# lm_model: !new:speechbrain.lobes.models.RNNLM.RNNLM
-#     output_neurons: !ref <output_neurons>
-#     embedding_dim: !ref <lm_emb_size>
-#     activation: !ref <lm_activation>
-#     dropout: !ref <lm_dropout>
-#     rnn_layers: !ref <lm_rnn_layers>
-#     rnn_neurons: !ref <lm_rnn_neurons>
-#     dnn_blocks: !ref <lm_dnn_blocks>
-#     dnn_neurons: !ref <lm_dnn_neurons>
-#     return_hidden: True # for inference
+lm_model: !new:speechbrain.lobes.models.RNNLM.RNNLM
+    output_neurons: !ref <output_neurons>
+    embedding_dim: !ref <lm_emb_size>
+    activation: !ref <lm_activation>
+    dropout: !ref <lm_dropout>
+    rnn_layers: !ref <lm_rnn_layers>
+    rnn_neurons: !ref <lm_rnn_neurons>
+    dnn_blocks: !ref <lm_dnn_blocks>
+    dnn_neurons: !ref <lm_dnn_neurons>
+    return_hidden: True # for inference
 
 bs_ctc_weight: 0.3
 bs_lm_weight: 0.2
-# greedy_searcher: !new:speechbrain.decoders.seq2seq.S2SRNNBeamSearchLM
-#     embedding: !ref <emb>
-#     decoder: !ref <dec>
-#     linear: !ref <seq_lin>
-#     ctc_linear: !ref <ctc_lin>
-#     language_model: !ref <lm_model>
-#     bos_index: !ref <bos_index>
-#     eos_index: !ref <eos_index>
-#     blank_index: !ref <blank_index>
-#     min_decode_ratio: !ref <min_decode_ratio>
-#     max_decode_ratio: !ref <max_decode_ratio>
-#     beam_size: 512
-#     # add parameters
-#     eos_threshold: 100.0
-#     using_max_attn_shift: True
-#     coverage_penalty: 1.5
-#     max_attn_shift: 300
-#     ctc_weight: !ref <bs_ctc_weight> 
-#     lm_weight: !ref <bs_lm_weight>
+greedy_searcher: !new:speechbrain.decoders.seq2seq.S2SRNNBeamSearchLM
+    embedding: !ref <emb>
+    decoder: !ref <dec>
+    linear: !ref <seq_lin>
+    ctc_linear: !ref <ctc_lin>
+    language_model: !ref <lm_model>
+    bos_index: !ref <bos_index>
+    eos_index: !ref <eos_index>
+    blank_index: !ref <blank_index>
+    min_decode_ratio: !ref <min_decode_ratio>
+    max_decode_ratio: !ref <max_decode_ratio>
+    beam_size: 512
+    # add parameters
+    eos_threshold: 100.0
+    using_max_attn_shift: True
+    coverage_penalty: 1.5
+    max_attn_shift: 300
+    ctc_weight: !ref <bs_ctc_weight> 
+    lm_weight: !ref <bs_lm_weight>
 
-# beam_searcher: !new:speechbrain.decoders.seq2seq.S2SRNNBeamSearchLM
-#     embedding: !ref <emb>
-#     decoder: !ref <dec>
-#     linear: !ref <seq_lin>
-#     ctc_linear: !ref <ctc_lin>
-#     language_model: !ref <lm_model>
-#     bos_index: !ref <bos_index>
-#     eos_index: !ref <eos_index>
-#     blank_index: !ref <blank_index>
-#     min_decode_ratio: !ref <min_decode_ratio>
-#     max_decode_ratio: !ref <max_decode_ratio>
-#     beam_size: 512
-#     # add parameters
-#     eos_threshold: 100.0
-#     using_max_attn_shift: True
-#     coverage_penalty: 1.5
-#     max_attn_shift: 300
-#     ctc_weight: !ref <bs_ctc_weight>
-#     lm_weight: !ref <bs_lm_weight>
+beam_searcher: !new:speechbrain.decoders.seq2seq.S2SRNNBeamSearchLM
+    embedding: !ref <emb>
+    decoder: !ref <dec>
+    linear: !ref <seq_lin>
+    ctc_linear: !ref <ctc_lin>
+    language_model: !ref <lm_model>
+    bos_index: !ref <bos_index>
+    eos_index: !ref <eos_index>
+    blank_index: !ref <blank_index>
+    min_decode_ratio: !ref <min_decode_ratio>
+    max_decode_ratio: !ref <max_decode_ratio>
+    beam_size: 512
+    # add parameters
+    eos_threshold: 100.0
+    using_max_attn_shift: True
+    coverage_penalty: 1.5
+    max_attn_shift: 300
+    ctc_weight: !ref <bs_ctc_weight>
+    lm_weight: !ref <bs_lm_weight>
 
 
 model: !new:torch.nn.ModuleList
@@ -244,7 +253,7 @@ modules:
     dec: !ref <dec>
     ctc_lin: !ref <ctc_lin>
     seq_lin: !ref <seq_lin>
-   #  lm_model: !ref <lm_model>
+    lm_model: !ref <lm_model>
 
 checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
     checkpoints_dir: !ref <save_folder>
@@ -273,10 +282,10 @@ error_rate_computer: !name:speechbrain.utils.metric_stats.ErrorRateStats
 cer_computer: !name:speechbrain.utils.metric_stats.ErrorRateStats
    split_tokens: True
 
-# pretrained_lm_path: RNNLM_mix/2223/save/CKPT+2022-05-02+19-15-34+00 # e,g./path/to/RNNLM
-# pretrainer: !new:speechbrain.utils.parameter_transfer.Pretrainer
-#    collect_in: !ref <save_folder>/rnnlm
-#    loadables:
-#       lm: !ref <lm_model>
-#    paths:
-#       lm: !ref <pretrained_lm_path>/model.ckpt
+pretrained_lm_path: RNNLM_mix/2223/save/CKPT+2022-05-02+19-15-34+00 # e,g./path/to/RNNLM
+pretrainer: !new:speechbrain.utils.parameter_transfer.Pretrainer
+   collect_in: !ref <save_folder>/rnnlm
+   loadables:
+      lm: !ref <lm_model>
+   paths:
+      lm: !ref <pretrained_lm_path>/model.ckpt
