@@ -37,6 +37,7 @@ class ASR(sb.Brain):
         super().__init__(modules, opt_class, hparams, run_opts, checkpointer)
         self.writer = SummaryWriter(self.hparams.tensorboard_loc)
         self.step_cnt = 1
+        self.first_batch = True
 
     def compute_forward(self, batch, stage, use_lm=False):
         """Forward computations from the waveform batches to the output probabilities."""
@@ -266,6 +267,12 @@ class ASR(sb.Brain):
                             self._save_intra_epoch_ckpt()
                         last_ckpt_time = time.time()
 
+                    if self.first_batch == True:
+                        if sb.utils.distributed.if_main_process():
+                            self._save_intra_epoch_ckpt()
+                        last_ckpt_time = time.time()
+                        self.first_batch = False
+                        
                     # Validation and log by tensorboard, after some steps
                     if self.step % self.hparams.valid_interval == 0:
                         valid_step = 0
